@@ -14,6 +14,8 @@
      Example: "Student reviews of CS professors at [university] — useful because official
      course descriptions don't reflect teaching style, exam difficulty, or workload." -->
 
+I found student reviews of CS professors at City Colleges of Chicago - Wright College. The data was collected from Rate My Professors profiles for the various professors. This knowledge is extremely valuable for students picking classes, as it helps them find if a professor would be a good fit for them. Alternatively, it can show problems that other students have had with teaching styles or attitudes for example. There's no official, central collection for this data, and in order to access it you need to search for each professor individually, which can be tedious given there are nearly 20 professors teaching dozens of classes.
+
 ---
 
 ## Document Sources
@@ -22,18 +24,18 @@
      Be specific: include URLs, subreddit names, forum thread titles, or file names.
      Aim for variety — sources that together cover different subtopics or perspectives. -->
 
-| # | Source | Type | URL or file path |
-|---|--------|------|-----------------|
-| 1 | | | |
-| 2 | | | |
-| 3 | | | |
-| 4 | | | |
-| 5 | | | |
-| 6 | | | |
-| 7 | | | |
-| 8 | | | |
-| 9 | | | |
-| 10 | | | |
+| # | Source | Description | URL or location |
+|---|--------|-------------|-----------------|
+| 1 | RMP | RMP Info for Abdul Khan | documents\Abdul_Khan.txt | 
+| 2 | RMP | RMP Info for Dan Grigoletti | documents\Dan_Grigoletti.txt |
+| 3 | RMP | RMP Info for Douglas Kaniuk | documents\Douglas_Kaniuk.txt |
+| 4 | RMP | RMP Info for Duke Best | documents\Duke_Best.txt |
+| 5 | RMP | RMP Info for Erika Nadas | documents\Erika_Nadas.txt |
+| 6 | RMP | RMP Info for Gustavo Alatta | documents\Gustavo_Alatta.txt |
+| 7 | RMP | RMP Info for Laurie Alfaro | documents\Laurie_Alfaro.txt |
+| 8 | RMP | RMP Info for Luke Papademas | documents\Luke_Papademas.txt |
+| 9 | RMP | RMP Info for Mohammed Hossain | documents\Mohammed_Hossain.txt |
+| 10 | RMP | RMP Info for Ogar Haji | documents\Ogar_Haji.txt |
 
 ---
 
