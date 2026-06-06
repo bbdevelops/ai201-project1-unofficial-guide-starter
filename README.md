@@ -9,52 +9,141 @@
 
 ## Domain
 
-<!-- What topic or category of knowledge does your system cover?
-     Why is this knowledge valuable, and why is it hard to find through official channels?
-     Example: "Student reviews of CS professors at [university] — useful because official
-     course descriptions don't reflect teaching style, exam difficulty, or workload." -->
-
-I found student reviews of CS professors at City Colleges of Chicago - Wright College. The data was collected from Rate My Professors profiles for the various professors. This knowledge is extremely valuable for students picking classes, as it helps them find if a professor would be a good fit for them. Alternatively, it can show problems that other students have had with teaching styles or attitudes for example. There's no official, central collection for this data, and in order to access it you need to search for each professor individually, which can be tedious given there are nearly 20 professors teaching dozens of classes.
+Student reviews of CS professors at City Colleges of Chicago — Wright College, collected from Rate My Professors. This knowledge is valuable because official course descriptions reveal nothing about teaching style, exam difficulty, workload, or professor personality. The only way to access this information through Rate My Professors is to search for each professor individually, which is tedious when there are nearly 20 professors teaching dozens of classes. There is no official, central collection of this data.
 
 ---
 
 ## Document Sources
 
-<!-- List every source you collected documents from.
-     Be specific: include URLs, subreddit names, forum thread titles, or file names.
-     Aim for variety — sources that together cover different subtopics or perspectives. -->
-
-| # | Source | Description | URL or location |
-|---|--------|-------------|-----------------|
-| 1 | RMP | RMP Info for Abdul Khan | documents\Abdul_Khan.txt | 
-| 2 | RMP | RMP Info for Dan Grigoletti | documents\Dan_Grigoletti.txt |
-| 3 | RMP | RMP Info for Douglas Kaniuk | documents\Douglas_Kaniuk.txt |
-| 4 | RMP | RMP Info for Duke Best | documents\Duke_Best.txt |
-| 5 | RMP | RMP Info for Erika Nadas | documents\Erika_Nadas.txt |
-| 6 | RMP | RMP Info for Gustavo Alatta | documents\Gustavo_Alatta.txt |
-| 7 | RMP | RMP Info for Laurie Alfaro | documents\Laurie_Alfaro.txt |
-| 8 | RMP | RMP Info for Luke Papademas | documents\Luke_Papademas.txt |
-| 9 | RMP | RMP Info for Mohammed Hossain | documents\Mohammed_Hossain.txt |
-| 10 | RMP | RMP Info for Ogar Haji | documents\Ogar_Haji.txt |
+| # | Source | Type | URL or file path |
+|---|--------|------|-----------------|
+| 1 | Rate My Professors — Abdul Khan | .txt | documents/Abdul_Khan.txt |
+| 2 | Rate My Professors — Dan Grigoletti | .txt | documents/Dan_Grigoletti.txt |
+| 3 | Rate My Professors — Douglas Kaniuk | .txt | documents/Douglas_Kaniuk.txt |
+| 4 | Rate My Professors — Duke Best | .txt | documents/Duke_Best.txt |
+| 5 | Rate My Professors — Erika Nadas | .txt | documents/Erika_Nadas.txt |
+| 6 | Rate My Professors — Gustavo Alatta | .txt | documents/Gustavo_Alatta.txt |
+| 7 | Rate My Professors — Laurie Alfaro | .txt | documents/Laurie_Alfaro.txt |
+| 8 | Rate My Professors — Luke Papademas | .txt | documents/Luke_Papademas.txt |
+| 9 | Rate My Professors — Mohammed Hossain | .txt | documents/Mohammed_Hossain.txt |
+| 10 | Rate My Professors — Ogar Haji | .txt | documents/Ogar_Haji.txt |
 
 ---
 
 ## Chunking Strategy
 
-<!-- Describe your chunking approach with enough specificity that someone else could reproduce it.
-     Include:
-     - Chunk size (characters or tokens) and why that size fits your documents
-     - Overlap size and why (or why not) you used overlap
-     - Any preprocessing you did before chunking (e.g., stripping HTML, removing headers)
-     - What your final chunk count was across all documents -->
+**Chunk size:** Variable — each chunk is one complete review block, defined as all text between consecutive `\n\n` delimiters. Individual reviews range from roughly 80 to 400 characters depending on how much the student wrote.
 
-**Chunk size:**
+**Overlap:** 0. Any overlap at review boundaries would introduce text from a different student's review into the adjacent chunk, conflating two separate opinions into one retrieval unit.
 
-**Overlap:**
+**Why these choices fit your documents:** Reviews are naturally self-contained paragraphs — every `\n\n` in the source files marks the exact boundary between one student's opinion and the next. A fixed character or token size would either split a single review across two chunks (losing the context of a complete thought) or merge multiple reviews into one chunk (mixing sentiments from different students about different aspects of the course). Splitting on `\n\n` aligns chunking with the document's own semantic boundaries without any arbitrary size decision. The professor's name is prepended to every chunk as `"Professor: {Name}\n"` so that name-based queries can match the correct reviews at retrieval time.
 
-**Why these choices fit your documents:**
+**Final chunk count:** 91 chunks across 10 documents (run `python ingest.py` to reproduce).
 
-**Final chunk count:**
+---
+
+## Sample Chunks
+
+Each chunk below is shown exactly as stored, with the professor name prepended and the source file labeled.
+
+---
+
+**Chunk 1 — Source: Abdul_Khan.txt**
+```
+Professor: Abdul Khan
+Quality
+3.0
+Difficulty
+1.0
+Class: CIS142
+Feb 1st, 2024
+For Credit: Yes
+Attendance: Not Mandatory
+Grade: A
+Textbook: Yes
+Online Class: Yes
+Often make mistakes during presentations but it doesn't matter because the material is copied and pasted and I learned more on my own than in this class.
+```
+
+---
+
+**Chunk 2 — Source: Abdul_Khan.txt**
+```
+Professor: Abdul Khan
+Quality
+4.0
+Difficulty
+3.0
+Class: CIS242
+Jun 23rd, 2019
+For Credit: Yes
+Attendance: Not Mandatory
+Would Take Again: Yes
+Grade: A
+Textbook: Yes
+In this CIS 242 with Dr. Khan (Fall 2018), I learned so much more C++ material that I didn't learn in my CIS 142, although there can be a bit of overlap at the start that you'll have to get by. Grade is 30% homework/lab coding assignments (6 of each), 10% quizzes, 30% midterm exam, 30% final exam. Class was hybrid so we met every other week.
+Get ready to read Test heavy Clear grading criteria
+```
+
+---
+
+**Chunk 3 — Source: Duke_Best.txt**
+```
+Professor: Duke Best
+Quality
+5.0
+Difficulty
+2.0
+Class: CIS101
+Oct 13th, 2025
+Attendance: Mandatory
+Would Take Again: Yes
+Grade: A+
+Textbook: N/A
+Online Class: Yes
+Professor was highly devoted to helping us understand concepts and real life application. We had great speakers in the industry that provided career path feedback. I appreciated the help on topics and his professionalism.
+Inspirational Hilarious Accessible outside class
+```
+
+---
+
+**Chunk 4 — Source: Duke_Best.txt**
+```
+Professor: Duke Best
+Quality
+5.0
+Difficulty
+3.0
+Class: CIS101
+Jan 25th, 2024
+For Credit: Yes
+Attendance: Mandatory
+Would Take Again: Yes
+Grade: A+
+Textbook: Yes
+Online Class: Yes
+Duke is a great professor. He is very passionate about his work and he's willing to help you whenever you need it!
+```
+
+---
+
+**Chunk 5 — Source: Duke_Best.txt**
+```
+Professor: Duke Best
+Quality
+5.0
+Difficulty
+1.0
+Class: CIS101
+Feb 18th, 2025
+Attendance: Not Mandatory
+Would Take Again: Yes
+Grade: A+
+Textbook: N/A
+Online Class: Yes
+He was always made himself available to meet during his office hours. He has a lot industry experience and has shared valuable insights relevant to the field. He is very helpful in providing direction and guidance not only in the course but also real world applications in field. I would take his course again.
+Amazing lectures Caring Accessible outside class
+```
 
 ---
 
