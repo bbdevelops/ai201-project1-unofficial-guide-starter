@@ -28,20 +28,21 @@ groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
 # Rule 3 requires source citations in every response, making attribution visible in the output.
 SYSTEM_PROMPT = """\
 You are a helpful assistant answering questions about CS professors at Wright College \
-based exclusively on student reviews provided to you.
+based exclusively on student reviews provided to you. Treat these reviews as the complete and total universe of available information.
 
 Rules you must follow:
 1. Answer ONLY from the review excerpts in the context below. Do not use your general \
 training knowledge about teaching, universities, or any topic.
-2. If the provided reviews do not contain enough information to answer the question, \
-respond with exactly: "I don't have enough information in the provided reviews to answer that question."
-3. At the end of every response, list the source files you drew from, formatted as:
+2. If a user asks if "other" professors teach a class, or asks for a comparison, and the documents only show one professor fitting the criteria, DO NOT say you lack information. Instead, explicitly state that the documents only mention that one person. (For example: "Based on the provided reviews, Abdul Khan is the only professor listed who teaches CIS142. There is no information about other professors teaching it.")
+3. If the context is completely unrelated to the prompt (e.g., asking about a subject not in the documents at all), ONLY THEN respond with exactly: "I don't have enough information in the provided reviews to answer that question."
+4. At the end of every response, list the source files you actually drew from to generate \
+the text, formatted as:
    Sources: [filename1.txt, filename2.txt]
-4. When multiple reviews say different things, summarize the range of opinions fairly.\
+5. When multiple reviews say different things, summarize the range of opinions fairly.\
 """
 
 
-def ask(question: str, professor_filter: str | None = None) -> dict:
+def ask(question: str, professor_filter: str | None = None, bm25_data: dict | None = None) -> dict:
     """
     Run the full RAG pipeline for a single question and return a structured result.
 
@@ -57,7 +58,7 @@ def ask(question: str, professor_filter: str | None = None) -> dict:
     """
     # Step 1: semantic retrieval — returns top-5 chunks ranked by cosine distance.
     # professor_filter is forwarded to ChromaDB's where clause if set.
-    chunks = retrieve_context(question, collection, k=5, professor_filter=professor_filter)
+    chunks = retrieve_context(question, collection, k=5, professor_filter=professor_filter, bm25_data=bm25_data)
 
     # Step 2: format context blocks with source labels.
     # Embedding each chunk's filename in the context lets the LLM cite sources accurately.
@@ -89,40 +90,80 @@ def ask(question: str, professor_filter: str | None = None) -> dict:
 
     return {"answer": answer, "sources": sources}
 
+def rewrite_query(message: str, history: list[dict]) -> str:
+    """
+    Uses the LLM to rewrite conversational follow-ups into standalone search queries.
+    If the user says "What is his workload?", it rewrites it to "What is Abdul Khan's workload?"
+    """
+    if not history:
+        return message # First turn, no history to resolve
+        
+    rewrite_prompt = """You are a search query reformulator. 
+Given the chat history and the user's latest follow-up question, rewrite the follow-up question \
+to be a standalone search query that contains all necessary names, classes, and subjects.
+If the question is already standalone, return it exactly as is.
+DO NOT answer the question. ONLY return the rewritten query text."""
+
+    # Build a temporary message array just for the rewrite task
+    messages = [{"role": "system", "content": rewrite_prompt}]
+    
+    # Safely unpack the history just like we do in the main chat function
+    for turn in history:
+        if "role" in turn and "content" in turn:
+            messages.append({"role": turn["role"], "content": str(turn["content"])})
+            
+    messages.append({
+        "role": "user", 
+        "content": f"Rewrite this follow-up question to be a standalone query: {message}"
+    })
+
+    # Use a fast, deterministic call
+    response = groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=messages,
+        temperature=0 # Keep it strictly factual
+    )
+    
+    return response.choices[0].message.content.strip()
+
 
 def chat(
     message: str,
     history: list[dict],
     professor_filter: str | None = None,
+    bm25_data: dict | None = None,
 ) -> str:
-    """
-    Multi-turn RAG chat function for gr.ChatInterface.
+    
+    # 1. REWRITE THE QUERY SO THE DATABASE KNOWS THE CONTEXT
+    search_query = rewrite_query(message, history)
+    
+    # Optional debug print so you can see the magic happening in your terminal:
+    print(f"\n[DEBUG] Original: {message} --> Rewritten: {search_query}")
 
-    Args:
-      message:          The user's latest question.
-      history:          Prior turns as OpenAI-style dicts supplied by Gradio
-                        [{"role": "user", "content": "..."}, {"role": "assistant", ...}, ...]
-                        The format matches the Groq API directly, so no conversion is needed.
-      professor_filter: Optional exact professor name to restrict retrieval to one file.
-
-    Returns:
-      The LLM response string (sources are appended by the model per the system prompt).
-    """
-    # Retrieve chunks for the CURRENT question only.
-    # Prior conversation context is handled by passing history to the LLM as prior messages —
-    # not by re-running retrieval for the full conversation, which would inflate token cost
-    # and risk overwriting relevant context with stale chunks.
-    chunks = retrieve_context(message, collection, k=5, professor_filter=professor_filter)
+    # 2. RUN RETRIEVAL USING THE REWRITTEN QUERY
+    chunks = retrieve_context(
+        search_query, # <-- Make sure you change this from `message` to `search_query`
+        collection, 
+        k=15, 
+        professor_filter=professor_filter, 
+        bm25_data=bm25_data
+    )
 
     context_str = "\n\n---\n\n".join(
         f"[Source: {c['source']}]\n{c['text']}" for c in chunks
     )
 
-    # Build the messages array: system prompt → prior turns → current turn with context.
-    # The LLM can use history to resolve pronouns ("his", "that professor") from earlier
-    # turns while the fresh context blocks ground the current answer.
+    # 3. Build the messages array (The rest stays exactly the same)
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    messages.extend(history)  # already in OpenAI dict format from Gradio type="messages"
+    
+    # Scrub Gradio's history to explicitly drop the unsupported 'metadata' key
+    for turn in history:
+        if "role" in turn and "content" in turn:
+            messages.append({
+                "role": turn["role"],
+                "content": str(turn["content"])
+            })
+            
     messages.append({
         "role": "user",
         "content": f"Context:\n{context_str}\n\nQuestion: {message}",

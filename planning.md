@@ -197,3 +197,13 @@ Input: My ## Architecture Mermaid diagram, my \n\n chunking strategy with zero o
 * **Output:** A standalone `compare_chunking.py` script that embeds naively chunked documents into a separate ChromaDB collection, executes a query against both collections simultaneously, and prints the top-k retrieved chunks side-by-side.
 
 * **Verification:** I will run the script using one of my evaluation questions and manually inspect the terminal output. I am specifically looking to identify a chunk where the 200-character limit split a critical sentence or sentiment in half, demonstrating exactly why the naive approach degrades retrieval quality compared to my `\n\n` strategy.
+
+**Stretch Goal — Hybrid Search (+2pts):**
+
+* **Tool:** Claude 4.6 Sonnet
+
+* **Input:** My current `app.py` script featuring conversational memory and metadata filtering, along with instructions to integrate the `rank_bm25` library and apply Reciprocal Rank Fusion (RRF).
+
+* **Output:** An updated `app.py` that builds an in-memory BM25 index alongside ChromaDB, queries both simultaneously while respecting the metadata filter, and mathematically merges the rankings using RRF to return the definitive top 5 chunks.
+
+* **Verification:** I will test this by querying an exact keyword or course number (e.g., "CIS142") that a purely semantic search might deprioritize or miss, and verify that the BM25 keyword matching successfully pulls the relevant chunks into the final RRF top 5.

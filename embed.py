@@ -10,6 +10,7 @@ This module handles two phases:
 
 import pathlib
 import chromadb
+from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 from ingest import load_and_chunk_documents
 
@@ -83,48 +84,139 @@ def load_collection(
     return client.get_collection(name=collection_name)
 
 
+def build_bm25_index(collection: chromadb.Collection) -> dict:
+    """
+    Fetch all documents from a ChromaDB collection and build an in-memory BM25 index.
+
+    The corpus is derived directly from collection.get() so the BM25 vocabulary
+    is guaranteed to match the vector store exactly — same chunks, same metadata.
+    Returns a dict that retrieve_context() accepts as bm25_data.
+    """
+    result = collection.get()
+    docs = result["documents"]
+    metadatas = result["metadatas"]
+    tokenized = [doc.lower().split() for doc in docs]
+    return {
+        "index": BM25Okapi(tokenized),
+        "tokenized": tokenized,
+        "docs": docs,
+        "metadatas": metadatas,
+    }
+
+
 def retrieve_context(
     query: str,
     collection: chromadb.Collection,
     k: int = 5,
     professor_filter: str | None = None,
+    bm25_data: dict | None = None,
 ) -> list[dict]:
     """
-    Return the top-k chunks most semantically similar to the query.
+    Return the top-k chunks most relevant to the query.
 
-    Process:
-      1. Encode the query with the same model used during ingestion — this maps
-         the query into the same 384-dimensional embedding space as the stored chunks.
-      2. ChromaDB uses HNSW (approximate nearest-neighbor search) with cosine distance
-         to find the k closest vectors to the query embedding.
-      3. Return the matching documents along with their metadata and distance scores.
+    When bm25_data is None: pure semantic search (original behavior, backward-compatible).
+    When bm25_data is provided: hybrid search — semantic + BM25 merged with RRF.
 
     Args:
-      professor_filter: If provided, restrict the search to chunks whose 'professor'
-        metadata field exactly matches this string (e.g. "Abdul Khan"). Pass None to
-        search across all professors.
+      professor_filter: Restrict search to one professor's chunks. Applied to both the
+        ChromaDB where-clause and the BM25 corpus filter so both paths stay in sync.
+      bm25_data: Dict returned by build_bm25_index(). When provided, activates the
+        hybrid path. Pass None to use pure semantic search.
     """
-    query_embedding = model.encode([query]).tolist()
-
-    # Build the metadata filter only when a specific professor is requested.
-    # ChromaDB's simple {"key": "value"} format performs exact string equality.
     where = {"professor": professor_filter} if professor_filter else None
 
-    results = collection.query(
+    if bm25_data is None:
+        # ── Pure semantic (original path) ─────────────────────────────────────
+        query_embedding = model.encode([query]).tolist()
+        results = collection.query(
+            query_embeddings=query_embedding,
+            n_results=k,
+            where=where,
+        )
+        retrieved = []
+        for i in range(len(results["documents"][0])):
+            retrieved.append({
+                "text": results["documents"][0][i],
+                "source": results["metadatas"][0][i]["source"],
+                "professor": results["metadatas"][0][i]["professor"],
+                "distance": results["distances"][0][i],
+            })
+        return retrieved
+
+    # ── Hybrid path: semantic + BM25 → RRF ───────────────────────────────────
+    n_candidates = max(k * 4, 20)
+
+    # 1. Semantic candidates
+    query_embedding = model.encode([query]).tolist()
+    sem_results = collection.query(
         query_embeddings=query_embedding,
-        n_results=k,
+        n_results=n_candidates,
         where=where,
     )
-
-    retrieved = []
-    for i in range(len(results["documents"][0])):
-        retrieved.append({
-            "text": results["documents"][0][i],
-            "source": results["metadatas"][0][i]["source"],
-            "professor": results["metadatas"][0][i]["professor"],
-            "distance": results["distances"][0][i],
+    semantic_hits = []
+    for i in range(len(sem_results["documents"][0])):
+        semantic_hits.append({
+            "text": sem_results["documents"][0][i],
+            "source": sem_results["metadatas"][0][i]["source"],
+            "professor": sem_results["metadatas"][0][i]["professor"],
+            "distance": sem_results["distances"][0][i],
         })
-    return retrieved
+
+    # 2. BM25 candidates — filter corpus by professor if requested
+    if professor_filter:
+        indices = [
+            i for i, m in enumerate(bm25_data["metadatas"])
+            if m["professor"] == professor_filter
+        ]
+        if not indices:
+            bm25_hits = []
+        else:
+            filtered_tokenized = [bm25_data["tokenized"][i] for i in indices]
+            filtered_docs = [bm25_data["docs"][i] for i in indices]
+            filtered_meta = [bm25_data["metadatas"][i] for i in indices]
+            local_index = BM25Okapi(filtered_tokenized)
+            scores = local_index.get_scores(query.lower().split())
+            top_local = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:n_candidates]
+            bm25_hits = [
+                {
+                    "text": filtered_docs[i],
+                    "source": filtered_meta[i]["source"],
+                    "professor": filtered_meta[i]["professor"],
+                    "distance": 0.0,
+                }
+                for i in top_local
+                if scores[i] > 0
+            ]
+    else:
+        scores = bm25_data["index"].get_scores(query.lower().split())
+        top_global = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:n_candidates]
+        bm25_hits = [
+            {
+                "text": bm25_data["docs"][i],
+                "source": bm25_data["metadatas"][i]["source"],
+                "professor": bm25_data["metadatas"][i]["professor"],
+                "distance": 0.0,
+            }
+            for i in top_global
+            if scores[i] > 0
+        ]
+
+    # 3. Reciprocal Rank Fusion
+    rrf_scores: dict[str, float] = {}
+    doc_map: dict[str, dict] = {}
+
+    for rank, hit in enumerate(semantic_hits, start=1):
+        key = hit["text"]
+        rrf_scores[key] = rrf_scores.get(key, 0.0) + 1.0 / (60 + rank)
+        doc_map[key] = hit
+
+    for rank, hit in enumerate(bm25_hits, start=1):
+        key = hit["text"]
+        rrf_scores[key] = rrf_scores.get(key, 0.0) + 1.0 / (60 + rank)
+        doc_map.setdefault(key, hit)
+
+    ranked_keys = sorted(rrf_scores, key=lambda k: rrf_scores[k], reverse=True)
+    return [doc_map[key] for key in ranked_keys[:k]]
 
 
 if __name__ == "__main__":

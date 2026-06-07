@@ -472,7 +472,7 @@ My spec planned to extract the professor's name from the filename and prepend it
 
 ---
 
-## Metadata Filtering
+## Metadata Filtering (stretch goal)
 
 The interface includes an optional "Filter by Professor" dropdown that restricts retrieval to a single professor's reviews before the similarity search runs. This is implemented as a ChromaDB `where` filter on the `professor` metadata field, which was stored alongside every chunk during the embedding phase.
 
@@ -504,7 +504,7 @@ Query: *"What is their lecture style like?"*
 
 ---
 
-## Conversational Memory
+## Conversational Memory (stretch goal)
 
 The interface uses `gr.ChatInterface`, which maintains a running conversation history across turns. On each new message, the full prior exchange is included in the Groq API call alongside fresh retrieved context for the current question. This allows the LLM to resolve pronouns and implicit references from earlier turns.
 
@@ -537,7 +537,7 @@ In Turn 2, "his" is never defined — the system resolves the pronoun to Profess
 
 ---
 
-## Chunking Strategy Comparison
+## Chunking Strategy Comparison (stretch goal)
 
 Two chunking strategies were evaluated on the same 10 source documents using the same embedding model (`all-MiniLM-L6-v2`) and a retrieval depth of Top-k: 3.
 
@@ -651,3 +651,62 @@ other week. Get ready to read Test heavy Clear g
 
 **Overall conclusion:** The paragraph-split strategy outperformed the naive fixed split on all three queries. The fundamental problem with the naive approach is that it treats the documents as undifferentiated character streams. Because each source file is composed of discrete, self-contained review blocks separated by `\n\n`, splitting on those natural boundaries perfectly aligns chunk boundaries with semantic boundaries. The naive split violates those boundaries consistently: every chunk except the very first begins with a sentence fragment from the previous review and ends with a sentence fragment that continues in the next chunk. A lower cosine distance score does not compensate for a chunk that an LLM cannot interpret without its missing head or tail.
 
+---
+
+## Hybrid Search (stretch goal)
+
+The retrieval pipeline was upgraded from pure semantic search to hybrid search by combining ChromaDB cosine-distance retrieval with BM25 exact-keyword retrieval, merged using Reciprocal Rank Fusion (RRF).
+
+**How it works:**
+
+1. At app startup, `build_bm25_index(collection)` in `embed.py` calls `collection.get()` to fetch every stored document and tokenizes each with `.lower().split()`, building a `BM25Okapi` corpus that is guaranteed to be identical to the vector store.
+2. On each query, `retrieve_context()` runs both searches in parallel, fetching up to 20 candidates from each method to give the fusion algorithm sufficient signal.
+3. Both searches respect the professor dropdown filter: ChromaDB uses its native `where={"professor": ...}` clause, while BM25 pre-filters its in-memory corpus to only that professor's tokenized documents before scoring.
+4. RRF assigns each document a score of `1 / (60 + rank)` from each list it appears in, sums the contributions, and returns the top 5 by combined score. 
+
+**Why RRF?** It is rank-based rather than score-based, so it sidesteps the problem of semantic distances and BM25 scores being on completely different mathematical scales. 
+
+---
+
+### Query Comparison: Semantic vs. Hybrid Generation
+
+To evaluate the hybrid architecture, I tested queries that specifically expose the blind spots of vector databases (like alphanumeric course codes) and pure keyword matching (like subjective, abstract concepts). 
+
+---
+
+**Query 1 (Exact Keyword Match):** "What is CIS142 like?"
+
+* **The Retrieval Challenge:** "CIS142" is an alphanumeric course code with no intrinsic semantic meaning. A pure vector search struggles here because it treats the code as an abstract token, sometimes returning chunks for completely different classes like "CIS103" simply because the reviews share similar sentence structures.
+* **How Hybrid Performed:** BM25 easily anchored onto the exact string "CIS142" and RRF boosted those chunks to the top, completely overriding the semantic search's confusion.
+* **The Generated Response:**
+> CIS142 is taught by two professors mentioned in the reviews: Abdul Khan and Gustavo Alatta. According to the reviews, Abdul Khan's CIS142 class has varying quality ratings (1.0 and 3.0) and difficulty ratings (1.0 and 5.0). One review mentions that the professor often makes mistakes during presentations, and the material is copied and pasted, but the student learned more on their own. Another review of Abdul Khan's class mentions a strong accent, 2-hour lectures, and 2-hour labs, with weekly assignments and two exams.
+> 
+> On the other hand, Gustavo Alatta's CIS142 class has a quality rating of 5.0 and varying difficulty ratings (2.0, 3.0, and 4.0). The reviews praise Professor Alatta for his hands-on projects, lectures, and desire for students to succeed. He is described as knowledgeable, caring, and accessible outside of class. However, one review mentions that the class requires self-studying, especially for those with no prior coding experience, and that the professor is strict about deadlines.
+>
+> Sources: Abdul_Khan.txt, Gustavo_Alatta.txt
+
+---
+
+**Query 2 (Conceptual Search):** "Who is the most inspiring professor?"
+
+* **The Retrieval Challenge:** "Inspiring" is an abstract, subjective sentiment. Pure BM25 keyword matching fails here because students rarely use the exact word "inspiring"—instead using phrases like "Godsend," "went the extra mile," or "changed my career path."
+* **How Hybrid Performed:** Since "inspiring" is a concept rather than a literal keyword, BM25 returned noisy, irrelevant chunks. The semantic engine correctly identified sentiment-rich synonyms like "amazing" and "inspirational," allowing RRF to filter out the keyword-based noise and surface the most conceptually relevant reviews.
+* **The Generated Response:**
+> Based on the provided reviews, several professors are described as inspirational, including Duke Best, Laurie Alfaro, and Mohammed Hossain. Duke Best is consistently praised for his inspirational teaching style, with multiple reviews describing him as inspirational and amazing. Laurie Alfaro is also described as inspirational, with one review stating that she is "EXCELLENT" and another mentioning that she is inspirational despite some drawbacks in her teaching style. Mohammed Hossain is described as inspirational in some reviews, but also receives criticism in others. Overall, it seems that Duke Best is the most consistently inspirational professor, but Laurie Alfaro and Mohammed Hossain are also praised for their inspirational teaching styles.
+>
+> Sources: Duke_Best.txt, Laurie_Alfaro.txt, Mohammed_Hossain.txt
+
+---
+
+**Query 3 (Student Jargon/Slang):** "Is the homework mostly busywork?"
+
+* **The Retrieval Challenge:** This query relies on "busywork", a highly specific piece of student slang. 
+* **How Hybrid Performed:** "Busywork" is niche slang that pure semantic search often misses. BM25 successfully anchored on the exact slang term, while the semantic engine captured broader "workload" context. Fusing these signals provided a balanced, well-rounded set of reviews for the LLM to synthesize.
+* **The Generated Response:**
+> Based on the provided reviews, opinions about the homework vary. Some professors' homework is described as "useful to better understand the content" (Douglas Kaniuk, CIS103), "fun to do and solve" (Douglas Kaniuk, CIS103), and "helpful" (Ogar Haji, CIS144). However, others describe the homework as "horrible" (Ogar Haji, CIS120), "lots and lots of homework" (Ogar Haji, CIS144), or "makes no sense" (Ogar Haji, CIS120). It seems that whether the homework is considered busywork depends on the professor and the specific class.
+>
+> Sources: Douglas_Kaniuk.txt, Ogar_Haji.txt, Abdul_Khan.txt, Laurie_Alfaro.txt
+
+---
+
+**Overall conclusion:** Hybrid search out-performs either method alone because it allows the two retrieval systems to cover each other's blind spots. The conversational query router (which rewrites follow-up questions) ensures that the BM25 index always receives exact names and course codes to anchor onto, while the semantic vector database successfully pulls conceptually related sentiment, resulting in a perfectly grounded final generation.

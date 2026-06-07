@@ -1,7 +1,12 @@
 import os
 import pathlib
 import gradio as gr
-from query import chat
+from query import chat, collection
+from embed import build_bm25_index
+
+# Build the BM25 index at startup from the same ChromaDB corpus used by the
+# vector store, so both retrieval methods operate on an identical document set.
+_bm25_data = build_bm25_index(collection)
 
 # Derive professor names from the documents directory so the list stays in sync
 # automatically if a new professor file is ever added.
@@ -12,11 +17,9 @@ _professors = ["All Professors"] + [
     if f.endswith(".txt")
 ]
 
-
 def handle_chat(message: str, history: list, professor_selection: str) -> str:
     professor_filter = None if professor_selection == "All Professors" else professor_selection
-    return chat(message, history, professor_filter=professor_filter)
-
+    return chat(message, history, professor_filter=professor_filter, bm25_data=_bm25_data)
 
 professor_dd = gr.Dropdown(
     choices=_professors,
@@ -27,6 +30,8 @@ professor_dd = gr.Dropdown(
 demo = gr.ChatInterface(
     fn=handle_chat,
     additional_inputs=[professor_dd],
+    # Override the default accordion to rename it and force it open
+    additional_inputs_accordion=gr.Accordion(label="Search Filters", open=True),
     title="The Unofficial Wright College CS Professor Guide",
     description="Ask questions about CS professors at Wright College based on Rate My Professors reviews.",
 )
