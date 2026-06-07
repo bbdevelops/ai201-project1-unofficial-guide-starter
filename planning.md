@@ -141,49 +141,59 @@ flowchart TD
 
 **Milestone 3 — Ingestion and chunking:**
 
-Tool: Claude 4.6 Sonnet
+* **Tool:** Claude 4.6 Sonnet
 Input: My ## Architecture Mermaid diagram, my \n\n chunking strategy with zero overlap, and the specific requirement to extract the professor's name from the .txt filename and prepend it to every chunk.
 
-Output: A Python script that reads a directory of .txt files, cleans the filenames into professor names, splits the text precisely on \n\n, and outputs a list of dictionaries containing the enriched text and source metadata.
+* **Output:** A Python script that reads a directory of .txt files, cleans the filenames into professor names, splits the text precisely on \n\n, and outputs a list of dictionaries containing the enriched text and source metadata.
 
-Verification: I will run the script, print(len(chunks)) to ensure it actually split the reviews, and manually inspect print(chunks[0]) to verify that the professor's name was successfully injected into the text string before it gets passed to the embedder.
+* **Verification:** I will run the script, print(len(chunks)) to ensure it actually split the reviews, and manually inspect print(chunks[0]) to verify that the professor's name was successfully injected into the text string before it gets passed to the embedder.
 
 **Milestone 4 — Embedding and retrieval:**
 
-Tool: Claude 4.6 Sonnet
+* **Tool:** Claude 4.6 Sonnet
 
-Input: The output format from Milestone 3, along with the requirement to use sentence-transformers (all-MiniLM-L6-v2), ChromaDB as the vector store, and a Top-k: 5 retrieval parameter.
+* **Input:** The output format from Milestone 3, along with the requirement to use sentence-transformers (all-MiniLM-L6-v2), ChromaDB as the vector store, and a Top-k: 5 retrieval parameter.
 
-Output: The Python code to initialize the embedding model, load the chunks and metadata into a ChromaDB collection, and a retrieve_context(query) function.
+* **Output:** The Python code to initialize the embedding model, load the chunks and metadata into a ChromaDB collection, and a retrieve_context(query) function.
 
-Verification: I will pass 3 of my semantic evaluation questions (e.g., "What do students say about the textbook used in Professor Haji's class?") into the retrieval function and print the results. I will manually verify that the returned chunks actually contain the relevant keywords and that the ChromaDB cosine distance scores are reasonable (typically under 0.5).
+* **Verification:** I will pass 3 of my semantic evaluation questions (e.g., "What do students say about the textbook used in Professor Haji's class?") into the retrieval function and print the results. I will manually verify that the returned chunks actually contain the relevant keywords and that the ChromaDB cosine distance scores are reasonable (typically under 0.5).
 
 **Milestone 5 — Generation and interface:**
 
-Tool: Claude 4.6 Sonnet
+* **Tool:** Claude 4.6 Sonnet
 
-Input: The completed retrieval function, the requirement to use the Groq API (llama-3.3-70b-versatile), the strict instruction for grounded generation with source citations, and the Gradio skeleton code provided in the project hints.
+* **Input:** The completed retrieval function, the requirement to use the Groq API (llama-3.3-70b-versatile), the strict instruction for grounded generation with source citations, and the Gradio skeleton code provided in the project hints.
 
-Output: An end-to-end app.py script containing the LLM system prompt, the Groq API call, and the fully wired Gradio web interface.
+* **Output:** An end-to-end app.py script containing the LLM system prompt, the Groq API call, and the fully wired Gradio web interface.
 
-Verification: I will test the grounding by asking an out-of-scope question (e.g., "What is the capital of France?") to ensure the system refuses to answer. I will then ask a valid question and verify that the LLM explicitly cites the correct source file (e.g., Source: Duke_Best.txt) in its generated response.
+* **Verification:** I will test the grounding by asking an out-of-scope question (e.g., "What is the capital of France?") to ensure the system refuses to answer. I will then ask a valid question and verify that the LLM explicitly cites the correct source file (e.g., Source: Duke_Best.txt) in its generated response.
 
 **Stretch Goal — Metadata Filtering:**
 
-Tool: Claude 4.6 Sonnet
+* **Tool:** Claude 4.6 Sonnet
 
-Input: My existing retrieve_context function and app.py Gradio code, along with the requirement to add a professor dropdown menu to the UI and apply a where={"professor": selected_professor} filter to the ChromaDB collection.query() call.
+* **Input:** My existing retrieve_context function and app.py Gradio code, along with the requirement to add a professor dropdown menu to the UI and apply a where={"professor": selected_professor} filter to the ChromaDB collection.query() call.
 
-Output: An updated app.py script containing the new gr.Dropdown widget wired through the generation pipeline, and the modified retrieval function that handles the ChromaDB metadata filter.
+* **Output:** An updated app.py script containing the new gr.Dropdown widget wired through the generation pipeline, and the modified retrieval function that handles the ChromaDB metadata filter.
 
-Verification: I will test the filter by asking a general question like "Is the homework difficult?" with "All Professors" selected, expecting multiple professors to appear in the results. I will then ask the exact same question with "Ogar Haji" selected and verify that the "Retrieved from" output strictly contains only Ogar_Haji.txt.
+* **Verification:** I will test the filter by asking a general question like "Is the homework difficult?" with "All Professors" selected, expecting multiple professors to appear in the results. I will then ask the exact same question with "Ogar Haji" selected and verify that the "Retrieved from" output strictly contains only Ogar_Haji.txt.
 
 **Stretch Goal — Conversational Memory:**
 
-Tool: Claude 4.6 Sonnet
+* **Tool**: Claude 4.6 Sonnet
 
-Input: My updated app.py script containing the metadata filter, the requirement to refactor the UI to use gr.ChatInterface, instructions to map the chat history into the Groq API payload ([{"role": "user", ...}, {"role": "assistant", ...}]), and the constraint to preserve the professor dropdown by using the additional_inputs parameter.
+* **Input**: My updated app.py script containing the metadata filter, the requirement to refactor the UI to use gr.ChatInterface, instructions to map the chat history into the Groq API payload ([{"role": "user", ...}, {"role": "assistant", ...}]), and the constraint to preserve the professor dropdown by using the additional_inputs parameter.
 
-Output: A fully refactored app.py script featuring a conversational interface that automatically tracks history, formats it correctly for llama-3.3-70b-versatile, and seamlessly maintains the RAG retrieval loop and source citations across multiple turns.
+* **Output**: A fully refactored app.py script featuring a conversational interface that automatically tracks history, formats it correctly for llama-3.3-70b-versatile, and seamlessly maintains the RAG retrieval loop and source citations across multiple turns.
 
-Verification: I will test the memory by asking an initial question establishing a subject (e.g., "What do students say about Professor Khan's workload?") and then ask a follow-up query using a pronoun (e.g., "Does he accept late work?"). I will verify that the LLM correctly resolves the pronoun to Khan and retrieves the appropriate context to generate an accurate response.
+* **Verification**: I will test the memory by asking an initial question establishing a subject (e.g., "What do students say about Professor Khan's workload?") and then ask a follow-up query using a pronoun (e.g., "Does he accept late work?"). I will verify that the LLM correctly resolves the pronoun to Khan and retrieves the appropriate context to generate an accurate response.
+
+**Stretch Goal — Chunking Strategy Comparison:**
+
+* **Tool:** Claude 4.6 Sonnet
+
+* **Input:** My existing `ingest.py` script and the requirement to test a naive, fixed-character splitting strategy (200 characters, 20 overlap) against my custom paragraph strategy.
+
+* **Output:** A standalone `compare_chunking.py` script that embeds naively chunked documents into a separate ChromaDB collection, executes a query against both collections simultaneously, and prints the top-k retrieved chunks side-by-side.
+
+* **Verification:** I will run the script using one of my evaluation questions and manually inspect the terminal output. I am specifically looking to identify a chunk where the 200-character limit split a critical sentence or sentiment in half, demonstrating exactly why the naive approach degrades retrieval quality compared to my `\n\n` strategy.

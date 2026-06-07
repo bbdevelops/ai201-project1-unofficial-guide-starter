@@ -535,3 +535,119 @@ Context is retrieved only for the current question — not re-injected into hist
 
 In Turn 2, "his" is never defined — the system resolves the pronoun to Professor Khan from the prior turn's context, and the fresh retrieval correctly returns Khan's chunks to ground the answer.
 
+---
+
+## Chunking Strategy Comparison
+
+Two chunking strategies were evaluated on the same 10 source documents using the same embedding model (`all-MiniLM-L6-v2`) and a retrieval depth of Top-k: 3.
+
+| Strategy | Description | Chunk count |
+|----------|-------------|-------------|
+| **Paragraph split** (original) | Split on `\n\n`; each chunk is one complete review | 91 |
+| **Naive fixed split** | Sliding window of 200 characters, 20-character overlap, ignores all boundaries | 205 |
+
+The naive strategy was implemented in `compare_chunking.py`, which builds a separate ChromaDB collection (`naive_reviews`) and runs the same queries against both collections so results can be compared directly.
+
+**Why the naive split is harmful:** Every `.txt` source file contains structured review records separated by blank lines. A fixed-character window is completely unaware of these boundaries. The result is that chunks routinely begin or end mid-word ("ass: Yes" from "Online Cl**ass**: Yes", "lighted words" from "high**lighted** words"), mid-sentence thoughts lose their head or tail, and in some cases two entirely separate reviews are merged into one retrieval unit. An LLM receiving a fragment that begins mid-word cannot reliably synthesize it into a coherent answer.
+
+---
+
+### Query 1: What do students say about the textbook used in Professor Haji's class?
+
+| Rank | Paragraph split — Source | Distance | Naive split — Source | Distance |
+|------|--------------------------|----------|----------------------|----------|
+| 1 | Ogar_Haji.txt | 0.2403 | Ogar_Haji.txt | 0.2829 |
+| 2 | Ogar_Haji.txt | 0.3349 | Ogar_Haji.txt | 0.3252 |
+| 3 | Ogar_Haji.txt | 0.3564 | Ogar_Haji.txt | 0.3531 |
+
+**Paragraph split — Rank 1 chunk:**
+```
+Professor: Ogar Haji
+Quality
+1.0
+...
+Professor uses his own self written "textbook", which is ridden with grammar errors and poor
+English, multiple horrible contrasting colors, different sized fonts, and highlighted words
+which makes it very hard to read (not to mention the excessive clipart). Knowing I'm going
+to strain my eyes with this "textbook" makes me feel discouraged.
+Get ready to read  Participation matters  Lecture heavy
+```
+
+**Naive split — Rank 1 chunk:**
+```
+Professor: Ogar Haji ass: Yes Professor uses his own self written "textbook", which is
+ridden with grammar errors and poor English, multiple horrible contrasting colors,
+different sized fonts, and highlighted words which
+```
+
+**Analysis:** The paragraph split returns a complete, self-contained review as its top result — the full textbook complaint is intact, beginning with the reviewer's scores and ending with their tag words. The naive split's top result opens with `ass: Yes`, the trailing fragment of "Online Cl**ass**: Yes", followed by the same textbook sentence — but the sentence is cut off before its conclusion. The naive Rank 3 chunk opens with `lighted words` (the second half of "high**lighted** words"), making it nearly unusable without the sentence that precedes it. The paragraph strategy clearly wins on completeness.
+
+---
+
+### Query 2: How does Professor Best connect his coursework to the real world and the tech industry?
+
+| Rank | Paragraph split — Source | Distance | Naive split — Source | Distance |
+|------|--------------------------|----------|----------------------|----------|
+| 1 | Duke_Best.txt | 0.4147 | Duke_Best.txt | 0.3785 |
+| 2 | Duke_Best.txt | 0.4206 | Duke_Best.txt | 0.3853 |
+| 3 | Duke_Best.txt | 0.4362 | Duke_Best.txt | 0.4065 |
+
+**Paragraph split — Rank 3 chunk (most directly answers the question):**
+```
+Professor: Duke Best
+Quality
+5.0
+...
+Professor was highly devoted to helping us understand concepts and real life application.
+We had great speakers in the industry that provided career path feedback. I appreciated
+the help on topics and his professionalism.
+Inspirational  Hilarious  Accessible outside class
+```
+
+**Naive split — Rank 1 chunk:**
+```
+Professor: Duke Best ities of his I really admire are his passion for (teaching and
+technology) and his selflessness. He is more than willing to go the extra mile to help
+students succeed in his class and beyond it as wel
+```
+
+**Analysis:** The naive strategy actually produces lower (better) raw distance scores on this query, which might appear at first glance to be a win. But the content tells the opposite story. The naive Rank 1 chunk begins mid-word — `ities of his` is the tail of `qual**ities** of his` — and ends mid-word at `as wel` (from `as well`). An LLM reading this chunk cannot extract a complete thought. The paragraph strategy's Rank 3 chunk is the definitive answer: it contains the specific claim about "great speakers in the industry that provided career path feedback" as a fully intact sentence. This query illustrates an important principle: cosine distance measures embedding similarity, not answer quality. A fragment can embed close to a query while still being too broken to generate a coherent response from.
+
+---
+
+### Query 3: What should a student expect regarding the workload, homework, and exams in Professor Khan's classes?
+
+| Rank | Paragraph split — Source | Distance | Naive split — Source | Distance |
+|------|--------------------------|----------|----------------------|----------|
+| 1 | Abdul_Khan.txt | 0.2796 | Abdul_Khan.txt | 0.3009 |
+| 2 | Abdul_Khan.txt | 0.3427 | Abdul_Khan.txt | 0.3430 |
+| 3 | Abdul_Khan.txt | 0.3529 | Abdul_Khan.txt | 0.3449 |
+
+**Paragraph split — Rank 1 chunk:**
+```
+Professor: Abdul Khan
+Quality
+1.5
+Difficulty
+2.0
+Class: CIS120
+Nov 9th, 2015
+...
+Lectures are long. Has accent. Sometimes gets confused. For me the class is easy because
+I have a source of all the quizzes and exams. Overall. Assignments online are easy. There
+is no way you cant get a 100. quizzes and exams are hard. You will need the book.
+```
+
+**Naive split — Rank 1 chunk:**
+```
+Professor: Abdul Khan ve to get by. Grade is 30% homework/lab coding assignments (6 of
+each), 10% quizzes, 30% midterm exam, 30% final exam. Class was hybrid so we met every
+other week. Get ready to read Test heavy Clear g
+```
+
+**Analysis:** The naive Rank 1 chunk opens with `ve to get by` — the end of `ha**ve** to get by` — and ends with `Clear g`, cutting off the tag word `Clear grading criteria`. The middle of the chunk happens to include a specific grade breakdown (30% homework, 10% quizzes, 30% midterm, 30% final) that does not appear as cleanly in the paragraph strategy's top result. However, this information is stranded between two damaged sentence fragments, making it harder for the LLM to interpret reliably. The paragraph strategy's Rank 1 chunk, by contrast, is a complete review — every statement from the reviewer has its beginning, middle, and end intact — giving the LLM the full context it needs to summarize workload expectations accurately.
+
+---
+
+**Overall conclusion:** The paragraph-split strategy outperformed the naive fixed split on all three queries. The fundamental problem with the naive approach is that it treats the documents as undifferentiated character streams. Because each source file is composed of discrete, self-contained review blocks separated by `\n\n`, splitting on those natural boundaries perfectly aligns chunk boundaries with semantic boundaries. The naive split violates those boundaries consistently: every chunk except the very first begins with a sentence fragment from the previous review and ends with a sentence fragment that continues in the next chunk. A lower cosine distance score does not compensate for a chunk that an LLM cannot interpret without its missing head or tail.
+
