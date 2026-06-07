@@ -90,6 +90,52 @@ def ask(question: str, professor_filter: str | None = None) -> dict:
     return {"answer": answer, "sources": sources}
 
 
+def chat(
+    message: str,
+    history: list[dict],
+    professor_filter: str | None = None,
+) -> str:
+    """
+    Multi-turn RAG chat function for gr.ChatInterface.
+
+    Args:
+      message:          The user's latest question.
+      history:          Prior turns as OpenAI-style dicts supplied by Gradio
+                        [{"role": "user", "content": "..."}, {"role": "assistant", ...}, ...]
+                        The format matches the Groq API directly, so no conversion is needed.
+      professor_filter: Optional exact professor name to restrict retrieval to one file.
+
+    Returns:
+      The LLM response string (sources are appended by the model per the system prompt).
+    """
+    # Retrieve chunks for the CURRENT question only.
+    # Prior conversation context is handled by passing history to the LLM as prior messages —
+    # not by re-running retrieval for the full conversation, which would inflate token cost
+    # and risk overwriting relevant context with stale chunks.
+    chunks = retrieve_context(message, collection, k=5, professor_filter=professor_filter)
+
+    context_str = "\n\n---\n\n".join(
+        f"[Source: {c['source']}]\n{c['text']}" for c in chunks
+    )
+
+    # Build the messages array: system prompt → prior turns → current turn with context.
+    # The LLM can use history to resolve pronouns ("his", "that professor") from earlier
+    # turns while the fresh context blocks ground the current answer.
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages.extend(history)  # already in OpenAI dict format from Gradio type="messages"
+    messages.append({
+        "role": "user",
+        "content": f"Context:\n{context_str}\n\nQuestion: {message}",
+    })
+
+    response = groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=messages,
+    )
+
+    return response.choices[0].message.content
+
+
 if __name__ == "__main__":
     test_cases = [
         # In-scope query — should return a grounded answer with source citations

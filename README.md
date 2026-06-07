@@ -502,3 +502,36 @@ Query: *"What is their lecture style like?"*
 >
 > Sources: Abdul_Khan.txt
 
+---
+
+## Conversational Memory
+
+The interface uses `gr.ChatInterface`, which maintains a running conversation history across turns. On each new message, the full prior exchange is included in the Groq API call alongside fresh retrieved context for the current question. This allows the LLM to resolve pronouns and implicit references from earlier turns.
+
+**How it works architecturally:**
+
+The Groq messages array is built as:
+```
+[system_prompt] + [prior_turns_from_history] + [current_user_message_with_retrieved_context]
+```
+
+Context is retrieved only for the current question — not re-injected into historical turns. This keeps token usage low while still giving the LLM enough evidence to answer the current question and the conversation thread to resolve any pronoun references.
+
+**Multi-turn exchange demonstrating pronoun resolution:**
+
+> **Turn 1**
+> User: Tell me about Professor Khan's lecture style.
+>
+> Assistant: Professor Khan's lecture style is often described as reading from PowerPoint or the textbook, with some students mentioning that he doesn't explain things well or illustrate concepts on the board. He sometimes gets confused and makes mistakes during lectures. His accent is also frequently mentioned as being thick and hard to understand. Some students found the lectures to be boring and didn't see the need to attend class, as they could learn the material on their own or by reading the textbook.
+>
+> Sources: Abdul_Khan.txt
+
+> **Turn 2**
+> User: How is his workload and homework compared to those lectures?
+>
+> Assistant: According to the reviews, Professor Khan's workload and homework are often described as having weekly assignments, and some students found the online assignments to be easy. However, quizzes and exams are mentioned as being hard. In one review, it's mentioned that having a source of all the quizzes and exams made the class easy for the student. Another review mentions that there is no way you can't get a 100 on the assignments online, but the quizzes and exams are a different story.
+>
+> Sources: Abdul_Khan.txt
+
+In Turn 2, "his" is never defined — the system resolves the pronoun to Professor Khan from the prior turn's context, and the fresh retrieval correctly returns Khan's chunks to ground the answer.
+

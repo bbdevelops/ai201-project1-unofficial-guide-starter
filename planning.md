@@ -167,3 +167,23 @@ Input: The completed retrieval function, the requirement to use the Groq API (ll
 Output: An end-to-end app.py script containing the LLM system prompt, the Groq API call, and the fully wired Gradio web interface.
 
 Verification: I will test the grounding by asking an out-of-scope question (e.g., "What is the capital of France?") to ensure the system refuses to answer. I will then ask a valid question and verify that the LLM explicitly cites the correct source file (e.g., Source: Duke_Best.txt) in its generated response.
+
+**Stretch Goal — Metadata Filtering:**
+
+Tool: Claude 4.6 Sonnet
+
+Input: My existing retrieve_context function and app.py Gradio code, along with the requirement to add a professor dropdown menu to the UI and apply a where={"professor": selected_professor} filter to the ChromaDB collection.query() call.
+
+Output: An updated app.py script containing the new gr.Dropdown widget wired through the generation pipeline, and the modified retrieval function that handles the ChromaDB metadata filter.
+
+Verification: I will test the filter by asking a general question like "Is the homework difficult?" with "All Professors" selected, expecting multiple professors to appear in the results. I will then ask the exact same question with "Ogar Haji" selected and verify that the "Retrieved from" output strictly contains only Ogar_Haji.txt.
+
+**Stretch Goal — Conversational Memory:**
+
+Tool: Claude 4.6 Sonnet
+
+Input: My updated app.py script containing the metadata filter, the requirement to refactor the UI to use gr.ChatInterface, instructions to map the chat history into the Groq API payload ([{"role": "user", ...}, {"role": "assistant", ...}]), and the constraint to preserve the professor dropdown by using the additional_inputs parameter.
+
+Output: A fully refactored app.py script featuring a conversational interface that automatically tracks history, formats it correctly for llama-3.3-70b-versatile, and seamlessly maintains the RAG retrieval loop and source citations across multiple turns.
+
+Verification: I will test the memory by asking an initial question establishing a subject (e.g., "What do students say about Professor Khan's workload?") and then ask a follow-up query using a pronoun (e.g., "Does he accept late work?"). I will verify that the LLM correctly resolves the pronoun to Khan and retrieves the appropriate context to generate an accurate response.
