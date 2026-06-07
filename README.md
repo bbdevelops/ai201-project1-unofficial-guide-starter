@@ -149,15 +149,140 @@ Amazing lectures Caring Accessible outside class
 
 ## Embedding Model
 
-<!-- Name the embedding model you used and explain your choice.
-     Then answer: if you were deploying this system for real users and cost wasn't a constraint,
-     what tradeoffs would you weigh in choosing a different model?
-     Consider: context length limits, multilingual support, accuracy on domain-specific text,
-     latency, and local vs. API-hosted. -->
+**Model used:** `all-MiniLM-L6-v2` via `sentence-transformers`. This model encodes text into 384-dimensional vectors and was selected because it is fast, runs locally without an API key, and is well-suited for short-to-medium English text like student reviews. ChromaDB stores and searches the vectors using cosine distance (lower score = more similar).
 
-**Model used:**
+**Production tradeoff reflection:** One consideration would be the use of slang in the reviews. The lightweight `all-MiniLM-L6-v2` model might miss the semantic meaning of informal language, abbreviations, or misspellings common in student reviews, leading to less accurate embeddings. A larger, more sophisticated proprietary model like OpenAI's `text-embedding-3-large` might better capture this informal register. Another issue is throughput under load: if usage spikes near registration deadlines, a locally-run model may not scale fast enough, making a commercial embedding API a better option. For a fully offline, privacy-respecting deployment with no cost ceiling, the inference infrastructure could be hosted locally using a larger model such as `bge-large-en-v1.5` or a domain-fine-tuned variant.
 
-**Production tradeoff reflection:**
+---
+
+## Retrieval Test Examples
+
+For each query below, the top 5 chunks returned by `retrieve_context()` are shown with their source file and cosine distance score (0 = identical, lower = more relevant). Tests were run after building the vector store with all 91 chunks.
+
+---
+
+### Query 1: How does Professor Best connect his coursework to the real world and the tech industry?
+
+| Rank | Source | Distance |
+|------|--------|----------|
+| 1 | Duke_Best.txt | 0.4147 |
+| 2 | Duke_Best.txt | 0.4206 |
+| 3 | Duke_Best.txt | 0.4362 |
+| 4 | Duke_Best.txt | 0.4479 |
+| 5 | Dan_Grigoletti.txt | 0.4909 |
+
+**Top returned chunk (Rank 1):**
+```
+Professor: Duke Best
+Quality
+5.0
+Difficulty
+1.0
+Class: CIS101
+Feb 18th, 2025
+Attendance: Not Mandatory
+Would Take Again: Yes
+Grade: A+
+Textbook: N/A
+Online Class: Yes
+He was always made himself available to meet during his office hours. He has a lot industry experience and has shared valuable insights relevant to the field. He is very helpful in providing direction and guidance not only in the course but also real world applications in field. I would take his course again.
+Amazing lectures Caring Accessible outside class
+```
+
+**Rank 3 chunk (most directly answers the question):**
+```
+Professor: Duke Best
+Quality
+5.0
+Difficulty
+2.0
+Class: CIS101
+Oct 13th, 2025
+Attendance: Mandatory
+Would Take Again: Yes
+Grade: A+
+Textbook: N/A
+Online Class: Yes
+Professor was highly devoted to helping us understand concepts and real life application. We had great speakers in the industry that provided career path feedback. I appreciated the help on topics and his professionalism.
+Inspirational Hilarious Accessible outside class
+```
+
+**Why these chunks are relevant:** The query asks specifically about real-world application and the tech industry. Ranks 1 and 3 are the two most directly relevant chunks: Rank 1 mentions "industry experience" and "real world applications in field," and Rank 3 explicitly mentions "great speakers in the industry that provided career path feedback." Both are from `Duke_Best.txt`, confirming that retrieval correctly focused on the right professor. The Rank 5 result (Dan Grigoletti) is a near-miss — it mentions teaching in multiple locations and being "very knowledgeable," which shares some semantic overlap with "real-world experience" language even though it isn't about Professor Best.
+
+---
+
+### Query 2: What should a student expect regarding the workload, homework, and exams in Professor Khan's classes?
+
+| Rank | Source | Distance |
+|------|--------|----------|
+| 1 | Abdul_Khan.txt | 0.2796 |
+| 2 | Abdul_Khan.txt | 0.3427 |
+| 3 | Abdul_Khan.txt | 0.3529 |
+| 4 | Abdul_Khan.txt | 0.3598 |
+| 5 | Abdul_Khan.txt | 0.3636 |
+
+**Top returned chunk (Rank 1):**
+```
+Professor: Abdul Khan
+Quality
+1.5
+Difficulty
+2.0
+Class: CIS120
+Nov 9th, 2015
+For Credit: Yes
+Attendance: Mandatory
+Grade: A
+Textbook: Yes
+Lectures are long. Has accent. Sometimes gets confused. For me the class is easy because I have a source of all the quizzes and exams. Overall. Assignments online are easy. There is no way you cant get a 100. quizzes and exams are hard. You will need the book.
+```
+
+**Rank 4 chunk:**
+```
+Professor: Abdul Khan
+Quality
+1.0
+Difficulty
+5.0
+Class: CIS142
+Nov 10th, 2013
+Attendance: Mandatory
+Grade: A+
+Textbook: No
+Strong accent. 2hr lectures(where will just keep on talking about the powerpoint NONESTOP) he is a little outdated on C# cause he cant even explain certain things to us when we ask him. 2hr lab where he makes you do a program. He has 2 exams midterm and finals, so do good on it. He gives weekly assignments. He doesnt email. Late on grading too!
+```
+
+**Why these chunks are relevant:** The query targets workload, homework, and exams — all highly specific terms. All 5 returned chunks are from `Abdul_Khan.txt`, and the distances (0.28–0.36) are the lowest of any query in this test, indicating strong semantic alignment. Rank 1 mentions "quizzes and exams" and "Assignments online," directly matching the query vocabulary. Rank 4 explicitly describes "2 exams midterm and finals" and "weekly assignments," which corresponds closely to the expected answer in the evaluation plan. The fact that all 5 results are from the same source file confirms that the professor-name prepending strategy is working — the name "Abdul Khan" in the query aligns with the `"Professor: Abdul Khan"` prefix in every chunk from that file.
+
+---
+
+### Query 3: What do students say about the textbook used in Professor Haji's class?
+
+| Rank | Source | Distance |
+|------|--------|----------|
+| 1 | Ogar_Haji.txt | 0.2403 |
+| 2 | Ogar_Haji.txt | 0.3349 |
+| 3 | Ogar_Haji.txt | 0.3564 |
+| 4 | Ogar_Haji.txt | 0.3725 |
+| 5 | Ogar_Haji.txt | 0.4008 |
+
+**Top returned chunk (Rank 1):**
+```
+Professor: Ogar Haji
+Quality
+1.0
+Difficulty
+3.0
+Class: CIS144
+Jan 30th, 2024
+For Credit: Yes
+Attendance: Mandatory
+Grade: Drop/Withdrawal
+Textbook: N/A
+Online Class: Yes
+Professor uses his own self written "textbook", which is ridden with grammar errors and poor English, multiple horrible contrasting colors, different sized fonts, and highlighted words which makes it very hard to read (not to mention the excessive clipart). Knowing I'm going to strain my eyes with this "textbook" makes me feel discouraged.
+Get ready to read Participation matters Lecture heavy
+```
 
 ---
 
