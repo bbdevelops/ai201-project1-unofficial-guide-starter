@@ -41,7 +41,7 @@ respond with exactly: "I don't have enough information in the provided reviews t
 """
 
 
-def ask(question: str) -> dict:
+def ask(question: str, professor_filter: str | None = None) -> dict:
     """
     Run the full RAG pipeline for a single question and return a structured result.
 
@@ -50,9 +50,14 @@ def ask(question: str) -> dict:
       2. Format each chunk as a labeled block so the LLM can reference sources by name.
       3. Send the formatted context + question to llama-3.3-70b-versatile via Groq.
       4. Return the LLM's response and the list of source filenames.
+
+    Args:
+      professor_filter: If provided, restricts retrieval to chunks from this professor only.
+        Pass None (default) to search across all professors.
     """
-    # Step 1: semantic retrieval — returns top-5 chunks ranked by cosine distance
-    chunks = retrieve_context(question, collection, k=5)
+    # Step 1: semantic retrieval — returns top-5 chunks ranked by cosine distance.
+    # professor_filter is forwarded to ChromaDB's where clause if set.
+    chunks = retrieve_context(question, collection, k=5, professor_filter=professor_filter)
 
     # Step 2: format context blocks with source labels.
     # Embedding each chunk's filename in the context lets the LLM cite sources accurately.

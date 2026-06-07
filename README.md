@@ -470,3 +470,35 @@ My spec planned to extract the professor's name from the filename and prepend it
 - *What it produced:* The AI suggested adding a secondary character splitter to my ingestion script to catch massive outlier reviews that might exceed the all-MiniLM-L6-v2 embedding token limit.
 - *What I changed or overrode:* I reviewed my raw text files and verified that the absolute longest review in my dataset was only 600 characters, which fits safely inside the token limit. I overrode the AI's suggestion and kept my ingestion script strictly limited to the \n\n split, keeping the codebase lightweight and avoiding unnecessary edge case logic.
 
+---
+
+## Metadata Filtering
+
+The interface includes an optional "Filter by Professor" dropdown that restricts retrieval to a single professor's reviews before the similarity search runs. This is implemented as a ChromaDB `where` filter on the `professor` metadata field, which was stored alongside every chunk during the embedding phase.
+
+**How it works:**
+1. The Gradio dropdown lists all 10 professors plus a default "All Professors" option, derived dynamically from the `documents/` directory.
+2. When a specific professor is selected, `retrieve_context()` passes `where={"professor": "Professor Name"}` to the ChromaDB query, restricting the candidate pool to only that professor's chunks.
+3. When "All Professors" is selected, no `where` filter is applied and behavior is identical to the base pipeline.
+
+**Visible effect — same query, different filter settings:**
+
+Query: *"What is their lecture style like?"*
+
+| Setting | Sources returned | Answer scope |
+|---------|-----------------|--------------|
+| All Professors | Abdul_Khan.txt, Duke_Best.txt, Gustavo_Alatta.txt, Ogar_Haji.txt | Compares lecture styles across four professors |
+| Filter: Abdul Khan | Abdul_Khan.txt only | Focused exclusively on Khan's lecture delivery |
+
+**Full responses:**
+
+*All Professors:*
+> The lecture styles of the professors vary. Professor Gustavo Alatta's lectures are described as "basically demonstrations for the work you will do" and "amazing," making it simple for students to understand and complete the work. Professor Abdul Khan's lectures are criticized for having "lots of mistakes" and an inability to keep up with system updates. Professor Duke Best is praised for breaking down "hard to understand concepts" into "bite-sized pieces" and being "very intuitive" to students' learning journeys. Professor Laurie Alfaro's lectures are described as "amazing" and she is praised for being "super supportive and helpful." Professor Ogar Haji's lectures are based on the textbook, but his strong accent and fast pace can make it hard for students to understand the information.
+>
+> Sources: Gustavo_Alatta.txt, Abdul_Khan.txt, Duke_Best.txt, Laurie_Alfaro.txt, Ogar_Haji.txt
+
+*Filter: Abdul Khan:*
+> Professor Abdul Khan's lecture style is often described as simply reading from a notepad, PowerPoint, or the textbook, without much explanation or illustration. He sometimes gets confused and makes mistakes during presentations. One review also mentions that his lectures are long. Additionally, it's noted that he often uses a "copy and paste" approach to his presentations. Overall, his lecture style seems to be more of a straightforward reading from prepared materials rather than engaging with the students or providing in-depth explanations.
+>
+> Sources: Abdul_Khan.txt
+

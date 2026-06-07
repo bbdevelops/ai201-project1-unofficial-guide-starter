@@ -87,6 +87,7 @@ def retrieve_context(
     query: str,
     collection: chromadb.Collection,
     k: int = 5,
+    professor_filter: str | None = None,
 ) -> list[dict]:
     """
     Return the top-k chunks most semantically similar to the query.
@@ -97,12 +98,22 @@ def retrieve_context(
       2. ChromaDB uses HNSW (approximate nearest-neighbor search) with cosine distance
          to find the k closest vectors to the query embedding.
       3. Return the matching documents along with their metadata and distance scores.
+
+    Args:
+      professor_filter: If provided, restrict the search to chunks whose 'professor'
+        metadata field exactly matches this string (e.g. "Abdul Khan"). Pass None to
+        search across all professors.
     """
     query_embedding = model.encode([query]).tolist()
+
+    # Build the metadata filter only when a specific professor is requested.
+    # ChromaDB's simple {"key": "value"} format performs exact string equality.
+    where = {"professor": professor_filter} if professor_filter else None
 
     results = collection.query(
         query_embeddings=query_embedding,
         n_results=k,
+        where=where,
     )
 
     retrieved = []
