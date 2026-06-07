@@ -393,11 +393,11 @@ Retrieved from:
 
 | # | Question | Expected answer | System response (summarized) | Retrieval quality | Response accuracy |
 |---|----------|-----------------|------------------------------|-------------------|-------------------|
-| 1 | | | | | |
-| 2 | | | | | |
-| 3 | | | | | |
-| 4 | | | | | |
-| 5 | | | | | |
+| 1 | Which professor or professors have the highest overall ranking? | Dan Grigoletti and Douglas Kaniuk [expected failure case, answering correctly would have required calculating averages of ranking] | Both Professor Duke Best and Professor Dan Grigoletti have the highest overall ranking of 5.0. | Relevant | Partially accurate |
+| 2 | How does Professor Best connect his coursework to the real world and the tech industry? | Professor best brings in outsides speakers, talks about his experience in industry, and encourages self-guided learning. | Professor Best integrates real-world tech industry applications and guest speaker insights into his coursework while encouraging students to extend their learning beyond textbooks. | Relevant| Accurate |
+| 3 | What should a student expect regarding the workload, homework, and exams in Professor Khan's classes? | Lots of homework, reading, and some students mention difficult exams.| Students in Professor Khan's classes should prepare for a heavy workload consisting of reading and weekly assignments, as well as challenging exams. | Relevant | Accurate |
+| 4 | How does Professor Khan typically deliver his lectures? | Should mention PowerPoint, reading from textbooks. Many reviews state he does not explain things clearly. | Reviews indicate that Professor Khan delivers lengthy, continuous lectures primarily by reading directly from PowerPoints or textbooks, often without sufficiently explaining or illustrating the material. | Relevant | Accurate |
+| 5 | What do students say about the textbook used in Professor Haji's class? | Professor's self written textbook is formatted in such a way that many students find it hard to engage with, specifically with CIS144. | While textbook requirements vary across his classes, students who used Professor Haji's self-written textbook heavily criticized it for being visually chaotic, full of errors, and very difficult to read. | Relevant | Accurate |
 
 **Retrieval quality:** Relevant / Partially relevant / Off-target  
 **Response accuracy:** Accurate / Partially accurate / Inaccurate
@@ -418,12 +418,16 @@ Retrieved from:
      results from an unrelated review" is an explanation. -->
 
 **Question that failed:**
+Which professor or professors have the highest overall ranking?
 
 **What the system returned:**
+Both Professor Duke Best and Professor Dan Grigoletti have the highest overall ranking of 5.0.
 
 **Root cause (tied to a specific pipeline stage):**
+Generation was incapable of viewing all reviews to take the average of scores to return the highest. The LLM is just incapable of doing such functions without more sophisticated tool calling.
 
 **What you would change to fix it:**
+Design a deterministic harness that is part of the ingestion phase that can properly extract review scores, average them, and then append them to a chunk in the same way the Professor's name is appended. Then add a metadata filtering component to the pipeline that allows that information to be readily accessed.
 
 ---
 
@@ -433,8 +437,12 @@ Retrieved from:
      Answer both questions with at least 2–3 sentences each. -->
 
 **One way the spec helped you during implementation:**
+Taking the time to develop the spec helped me to understand the end result much better. I had a better idea of what to look for in terms of the specific functions and how they should work. I imagine that the spec helped streamline the code development process, though I can't say for certain as I didn't do a control prompt without the spec.
+
 
 **One way your implementation diverged from the spec, and why:**
+My spec planned to extract the professor's name from the filename and prepend it to the chunk text to improve semantic context, alongside basic source metadata. During implementation in ingest.py, I diverged by also isolating the extracted professor's name into its own dedicated metadata key ("professor": professor). I did this because while the prepended text helps the embedding model, the isolated metadata key allows the vector database to perform exact-match filtering, setting the architecture up to support advanced search features later.
+
 
 ---
 
@@ -451,12 +459,14 @@ Retrieved from:
 
 **Instance 1**
 
-- *What I gave the AI:*
-- *What it produced:*
-- *What I changed or overrode:*
+- *What I gave the AI:* I asked how to handle a retrieval edge case where a query about Professor Best returned one chunk about Professor Grigoletti in the top 5. I asked if I needed an embedding level fix or if the generation step would safely ignore it.
+- *What it produced:* The AI validated my assumption but also generated a code snippet to implement a max_distance threshold filter inside the retrieve_context function to explicitly drop weak semantic matches.
+- *What I changed or overrode:* I chose to reject the AI's threshold code. I decided to rely on the LLM system prompt to naturally filter out the irrelevant Grigoletti chunk during generation. Hardcoding a distance threshold was unnecessary and could risk breaking future queries that intentionally compare multiple professors.
+
 
 **Instance 2**
 
-- *What I gave the AI:*
-- *What it produced:*
-- *What I changed or overrode:*
+- *What I gave the AI:* While planning the ingestion pipeline, we discussed using a zero overlap \n\n chunking strategy to keep individual reviews intact.
+- *What it produced:* The AI suggested adding a secondary character splitter to my ingestion script to catch massive outlier reviews that might exceed the all-MiniLM-L6-v2 embedding token limit.
+- *What I changed or overrode:* I reviewed my raw text files and verified that the absolute longest review in my dataset was only 600 characters, which fits safely inside the token limit. I overrode the AI's suggestion and kept my ingestion script strictly limited to the \n\n split, keeping the codebase lightweight and avoiding unnecessary edge case logic.
+
