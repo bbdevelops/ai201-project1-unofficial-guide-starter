@@ -288,16 +288,100 @@ Get ready to read Participation matters Lecture heavy
 
 ## Grounded Generation
 
-<!-- Explain how your system enforces grounding — how does it prevent the LLM from answering
-     beyond the retrieved documents?
-     Describe both your system prompt (what instruction you gave the model) and any structural
-     choices (e.g., how you formatted the context, whether you filtered low-relevance chunks).
-     Do not just say "I told it to use the documents" — show the actual instruction or explain
-     the mechanism. -->
-
 **System prompt grounding instruction:**
 
+The system prompt is the primary enforcement mechanism. It is passed as the `system` role message so it cannot be overridden by the user message. The exact instruction:
+
+```
+You are a helpful assistant answering questions about CS professors at Wright College
+based exclusively on student reviews provided to you.
+
+Rules you must follow:
+1. Answer ONLY from the review excerpts in the context below. Do not use your general
+   training knowledge about teaching, universities, or any topic.
+2. If the provided reviews do not contain enough information to answer the question,
+   respond with exactly: "I don't have enough information in the provided reviews to
+   answer that question."
+3. At the end of every response, list the source files you drew from, formatted as:
+   Sources: [filename1.txt, filename2.txt]
+4. When multiple reviews say different things, summarize the range of opinions fairly.
+```
+
 **How source attribution is surfaced in the response:**
+
+The five retrieved chunks are injected into the user message, each prefixed with `[Source: filename.txt]`. This gives the LLM the filenames directly in the evidence it reads, so it can follow Rule 3 and cite them accurately at the end of its response. The Gradio interface also surfaces a separate "Retrieved from" field populated from the retrieval metadata, independent of what the LLM writes.
+
+**Example response 1 — in-scope query with source attribution:**
+
+> **Question:** How does Professor Best connect his coursework to the real world and the tech industry?
+>
+> **System response:**
+> Professor Best connects his coursework to the real world and the tech industry by sharing valuable insights relevant to the field, providing direction and guidance on real-world applications, and inviting great speakers from the industry to provide career path feedback. He also encourages students to expand their learning outside of textbooks, which helps them understand the practical applications of the concepts learned in class.
+>
+> Sources: Duke_Best.txt
+
+**Example response 2 — in-scope query with source attribution:**
+
+> **Question:** What do students say about the textbook used in Professor Haji's class?
+>
+> **System response:**
+> Students have varying opinions about the textbook used in Professor Haji's class. One student mentioned that in the CIS144 class, Professor Haji uses his own self-written "textbook" which is ridden with grammar errors, poor English, and has a visually unappealing format, making it hard to read. In another review for CIS120S, the student stated that the lectures are based on the book, but did not comment on the book's quality. In the CIS120 class, one student mentioned that there is no textbook. However, in a different review for CIS144, the student stated that there is a textbook and suggested that if students don't understand the concepts from it, they can look it up online.
+>
+> Sources: Ogar_Haji.txt
+
+**Out-of-scope query example — refusal response:**
+
+> **Question:** What is the capital of France?
+>
+> **System response:**
+> I don't have enough information in the provided reviews to answer that question.
+
+The refusal fires because the retrieved chunks contain no information about France or European capitals. Rule 2 in the system prompt provides the exact refusal string, so the model produces a consistent, predictable response rather than guessing or fabricating.
+
+---
+
+## Query Interface
+
+**Interface description:**
+
+The app uses Gradio's `Blocks` layout with two output fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| Your question | Text input | Free-text question about any Wright College CS professor |
+| Answer | Text output (8 lines) | LLM-generated response, grounded in retrieved reviews, ending with a "Sources:" citation list |
+| Retrieved from | Text output (4 lines) | Deduplicated list of source `.txt` files returned by the retrieval step, shown independently of the LLM output |
+
+The query is submitted either by clicking the **Ask** button or pressing Enter in the question box.
+
+**Sample interaction transcript:**
+
+```
+Question: What should a student expect regarding the workload, homework,
+          and exams in Professor Khan's classes?
+
+Answer:
+Based on the provided reviews, a student can expect a varying level of workload
+and homework in Professor Khan's classes. Some reviewers mentioned that the
+assignments online are easy and there's no way you can't get a 100, while others
+stated that there's lots of homework. Specifically, one reviewer mentioned that
+Professor Khan gives weekly assignments.
+
+Regarding exams, some reviewers found them to be hard, with one mentioning that
+quizzes and exams are hard but assignments are easy. Another reviewer mentioned
+that Professor Khan has 2 exams, a midterm and a final, and it's crucial to do
+well on them.
+
+The difficulty level of the classes also varied, with ratings ranging from 1.0 to
+5.0. However, most reviewers agreed that the lectures can be long and boring, with
+some students finding ways to complete assignments during class time and even dozing
+off.
+
+Sources: Abdul_Khan.txt
+
+Retrieved from:
+• Abdul_Khan.txt
+```
 
 ---
 
